@@ -1,187 +1,84 @@
-# GrantStreamVault
+# GrantStreamVault Architecture
 
 A secure token vesting contract with interval-based vesting, cliff periods, and protocol fees.
 
-## Overview
+## Storage Layout
 
-GrantStreamVault enables administrators to create token grants with:
+Grant struct: `total`, `claimed` (uint256), `start`, `duration`, `cliff` (uint64), `active` (bool). Single `contractBalance` (uint256) tracks unallocated pool. Stream interval configurable.
 
-- **Interval-based vesting** over configurable durations (default 30-day intervals)
-- Optional cliff periods
-- Protocol fees (max 5%) on each claim
-- Pause/unpause functionality
-- Grant revocation with unvested fund recovery
-- One-time initialization with token pool allocation
+## Access Control
 
-## Features
+Owner-only functions via `onlyOwner` modifier. Single address controls grants, configuration, pause, and withdrawals.
 
-✅ **Secure Implementation**
+**Balance Management**: `createGrant()` deducts from `contractBalance`. `claim()` transfers out. `updateGrant()` refunds old, deducts new. Prevents over-allocation.
 
-- Check-effects-interactions pattern
-- Custom errors for gas efficiency
-- Modifier-based access control
-- Explicit balance tracking with `contractBalance`
+**Interval-based Vesting**: Calculated on complete `streamInterval` periods only (default 30 days). Prevents partial claims.
 
-✅ **Complete Functionality**
+**Pause Mechanism**: Blocks claims via `whenNotPaused` while preserving calculations.
 
-- Initialize contract with token pool (one-time)
-- Create/update grants with configurable parameters
-- Claim vested tokens with automatic fee deduction (interval-based)
-- Revoke grants while preserving vested amounts
-- Emergency pause mechanism
-- Withdraw unallocated funds
+**Single Grant**: One active grant per recipient prevents duplicates.
 
-✅ **Comprehensive Testing**
+## Notes made during development
 
-- 44 passing tests covering all scenarios
-- Happy path and negative cases
-- Edge case handling (zero values, timing, etc.)
-- Revocation and multi-recipient tests
+- the vesting period has been defaulted to 1 month, as it wasnt specified, however this can be changed by the owner via the `setStreamInterval` function
+- we arent allowed any other dependancies, but decided to use OZ's NonReentrant guard for the sake of security. We could implement a custom one, but this is a vetted industry standard. We have implemented checks-effects-integration for token transfers etc
+- `contractBalance` utilised to censure we have a running total of the amount in the contract which can be used to output grants in a vested manner whilst recording contract balance wrt existing vesting schemes (this covers updates and revocations of grants too). Just to note this method is a design decision, and could have been implemented in a number of different ways
+- considered utilising `uint128` for token balances, since it would creater a tighter storage layout for the Grant structs, however didn't on the premise that `IERC20` typically uses `uint256` and didn't want to risk collisions or type errors within a small development timeframe: I would take slightly more time to read into and ascertain the most effective decision here, however in a risk matrix, if we had to, I would say that the cost of an extra slot per grant is less than the cost of a break in functionality
+- added events per function call to be succinct - for the sake of actually tracking events on a frontend etc, these would be more tightly tailored, however provide for testing each function in an easy manner here
 
-## Installation & Testing
+## UUPS upgrade notes
 
-### Run Tests
+- consider addingstorage gaps prevent storage collisions
+- would need to replace constructor with initializer function from open zeppelin `Initializable` if UUPS is used
+- be careful to make sure all new versions **append** storage variables only, **never** reorder existing ones, since this will overwrite existing slots
+- create a `dry-run` script to test the upgrade process
 
-```bash
-forge test
-```
+## Notes for owner
 
-### Run Tests with Gas Report
+- be careful which ERC20 token is used during deployment, as bad tokens couold be built with hooks that could cause issues with the contract
+- the Owner is the single point of trust in this contract, which may be odd or too dependant on a single entity in production. For the sake of rapid development, this contract has been left this way, but timelocks and/or multisig could be considered for production
+
+## Testing
+
+To run the entire test suite
 
 ```bash
-forge test --gas-report
+forge test -vv
 ```
 
-### Run Specific Test
+To run the fuzz tests
 
 ```bash
-forge test --match-test test_Claim_Success -vvv
+forge test --match-test "testFuzz" -vv
 ```
 
-## Core Contract Functions
+To run the invariants
 
-### Initialization
-
-- `initialize(amount)` - Owner transfers tokens into contract once (required before creating grants)
-
-### Admin Functions (Owner Only)
-
-- `createGrant(recipient, total, start, duration, cliff)` - Create a new vesting grant
-- `updateGrant(recipient, total, start, duration, cliff)` - Update existing grant (refunds old, allocates new)
-- `revokeGrant(recipient)` - Cancel a grant and recover unvested funds
-- `setStreamInterval(newInterval)` - Configure vesting interval (default: 30 days)
-- `pause()` - Stop all claims
-- `unpause()` - Resume claims
-- `withdraw(amount)` - Withdraw unallocated tokens from contract balance
-
-### User Functions
-
-- `claim()` - Claim vested tokens (automatically deducts protocol fee)
-- `vestedAmount(recipient)` - View vested amount for an address
-- `claimableAmount(recipient)` - View claimable amount (after fees)
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed design documentation.
-
-## Contract Details
-
-- **Solidity Version**: ^0.8.20
-- **Dependencies**: IERC20 interface (via forge-std)
-- **Gas Optimized**: Custom errors, efficient storage
-- **Vesting Model**: Interval-based (only complete intervals count)
-- **Default Interval**: 30 days (2,592,000 seconds)
-
-## Interval-Based Vesting Explained
-
-Unlike continuous linear vesting, this contract uses **discrete intervals**:
-
-```
-Grant: 1200 tokens, 360 days duration, 30-day intervals
-Total intervals: 360 / 30 = 12 intervals
-
-Day 29:  0 complete intervals → 0 tokens vested
-Day 30:  1 complete interval  → 100 tokens vested (1/12)
-Day 60:  2 complete intervals → 200 tokens vested (2/12)
-Day 180: 6 complete intervals → 600 tokens vested (6/12)
-Day 360: 12 complete intervals → 1200 tokens vested (12/12)
+```bash
+forge test --match-test "testInvariant" -vv
 ```
 
-This ensures predictable, scheduled distributions rather than per-second accrual.
+Test case coverage:
 
-## Test Coverage
-
-| Category             | Tests | Status      |
-| -------------------- | ----- | ----------- |
-| Constructor          | 5     | ✅ All Pass |
-| Initialization       | 4     | ✅ All Pass |
-| Create Grant         | 8     | ✅ All Pass |
-| Update Grant         | 3     | ✅ All Pass |
-| Vesting Calculations | 3     | ✅ All Pass |
-| Claims               | 5     | ✅ All Pass |
-| Revocation           | 2     | ✅ All Pass |
-| Pause/Unpause        | 2     | ✅ All Pass |
-| Stream Interval      | 4     | ✅ All Pass |
-| Withdraw             | 5     | ✅ All Pass |
-| Integration          | 3     | ✅ All Pass |
-
-**Total: 44 tests, 100% passing**
-
-## Security Considerations
-
-- ✅ One-time initialization prevents double-funding
-- ✅ Balance tracking prevents over-allocation
-- ✅ Check-effects-interactions pattern
-- ✅ Input validation on all parameters
-- ✅ Access control via modifiers
-- ✅ Safe math (Solidity 0.8+ overflow protection)
-- ✅ Pause mechanism for emergency stops
-- ✅ Single active grant per recipient
-
-## Example Usage
-
-```solidity
-// Deploy contract
-GrantStreamVault vault = new GrantStreamVault(
-    IERC20(tokenAddress),
-    250,              // 2.5% protocol fee
-    feeRecipient,
-    owner
-);
-
-// Initialize with 10,000 tokens (one-time only)
-// Owner must approve vault first
-token.approve(address(vault), 10000 ether);
-vault.initialize(10000 ether);
-
-// Create a 1-year vesting grant with 3-month cliff
-vault.createGrant(
-    recipient,
-    1000 ether,       // Total amount
-    block.timestamp,  // Start now
-    365 days,         // 1 year vesting
-    90 days           // 3 month cliff
-);
-
-// Default: vesting in 30-day intervals
-// After 120 days: 4 intervals passed = 4/12 = 33.33% vested
-
-// Recipient claims after 120 days (4 intervals)
-vault.claim(); // Receives ~333 ether minus protocol fee
-
-// Change to weekly intervals
-vault.setStreamInterval(7 days);
-```
-
-## Key Differences from Original Spec
-
-1. **Interval-based vesting**: Uses discrete intervals instead of continuous linear vesting
-2. **Initialize pattern**: One-time funding via `initialize()` instead of transfers during grant creation
-3. **Balance tracking**: Explicit `contractBalance` prevents over-allocation
-4. **Split functions**: Separate `createGrant()` and `updateGrant()` instead of combined function
-5. **uint256 amounts**: Standard token amounts (not uint128)
-6. **No reentrancy guard**: Standard ERC20 doesn't require it
-
-## License
-
-MIT
+├── Unit Tests: 43
+│ ├── Constructor: 5
+│ ├── Create Grant: 9
+│ ├── Update Grant: 3
+│ ├── Vesting: 3
+│ ├── Claims: 6
+│ ├── Revocation: 2
+│ ├── Pause: 2
+│ ├── Stream Interval: 4
+│ ├── Withdraw: 5
+│ └── Integration: 4
+│
+├── Fuzz Tests: 4
+│ ├── testFuzz_CreateGrant_ValidInputs
+│ ├── testFuzz_VestedAmount_LinearityAfterCliff
+│ ├── testFuzz_Claim_FeesCorrect
+│ └── testFuzz_Revoke_CorrectSplit
+│
+└── Invariant Tests: 3
+├── test_Invariant_SumOfUnclaimedLessThanOrEqualContractBalance
+├── test_Invariant_ClaimedNeverExceedsTotal
+└── test_Invariant_ContractBalanceAccounting
