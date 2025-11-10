@@ -57,28 +57,3 @@ To run the invariants
 ```bash
 forge test --match-test "testInvariant" -vv
 ```
-
-Test case coverage:
-
-├── Unit Tests: 43
-│ ├── Constructor: 5
-│ ├── Create Grant: 9
-│ ├── Update Grant: 3
-│ ├── Vesting: 3
-│ ├── Claims: 6
-│ ├── Revocation: 2
-│ ├── Pause: 2
-│ ├── Stream Interval: 4
-│ ├── Withdraw: 5
-│ └── Integration: 4
-│
-├── Fuzz Tests: 4
-│ ├── testFuzz_CreateGrant_ValidInputs
-│ ├── testFuzz_VestedAmount_LinearityAfterCliff
-│ ├── testFuzz_Claim_FeesCorrect
-│ └── testFuzz_Revoke_CorrectSplit
-│
-└── Invariant Tests: 3
-├── test_Invariant_SumOfUnclaimedLessThanOrEqualContractBalance
-├── test_Invariant_ClaimedNeverExceedsTotal
-└── test_Invariant_ContractBalanceAccounting
