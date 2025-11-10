@@ -29,8 +29,8 @@ contract GrantStreamVault is ReentrancyGuard {
     uint256 private constant BPS_DENOMINATOR = 10_000;
     uint256 private constant MAX_PROTOCOL_FEE_BPS = 500; // 5%
     uint256 private constant DEFAULT_STREAM_INTERVAL = 30 days;
-    uint256 private constant MIN_REASONABLE_DURATION = 1 hours; // Minimum reasonable vesting duration
-    uint256 private constant MAX_REASONABLE_DURATION = 10 * 365 days; // 10 years max
+    uint256 private constant MIN_REASONABLE_DURATION = 1 hours; 
+    uint256 private constant MAX_REASONABLE_DURATION = 10 * 365 days; 
 
     event GrantCreated(address indexed recipient, uint256 total, uint64 start, uint64 duration, uint64 cliff);
 
@@ -97,11 +97,11 @@ contract GrantStreamVault is ReentrancyGuard {
         feeRecipient = _feeRecipient;
         owner = _owner;
         streamInterval = DEFAULT_STREAM_INTERVAL;
-        
+
         if (!token.transferFrom(msg.sender, address(this), _amount)) {
             revert TransferFailed();
         }
-        
+
         contractBalance = _amount;
         initialized = true;
     }
@@ -113,14 +113,11 @@ contract GrantStreamVault is ReentrancyGuard {
         if (recipient == address(0)) revert ZeroAddress();
         if (total == 0) revert ZeroAmount();
         if (duration == 0) revert ZeroDuration();
-        
-        // Time validations for reasonable values (mitigates timestamp manipulation impact)
+
         if (duration < MIN_REASONABLE_DURATION) revert DurationTooShort();
         if (duration > MAX_REASONABLE_DURATION) revert DurationTooLong();
         if (cliff > duration) revert InvalidCliff();
-        
-        // Start time should be reasonable (not too far in past, accounting for 15s block drift)
-        // Allow zero (means now) or any time within 15s of current block
+
         if (start != 0 && block.timestamp > 15 && start < block.timestamp - 15) revert StartTimeInvalid();
 
         Grant storage g = grants[recipient];
@@ -147,7 +144,7 @@ contract GrantStreamVault is ReentrancyGuard {
         if (recipient == address(0)) revert ZeroAddress();
         if (total == 0) revert ZeroAmount();
         if (duration == 0) revert ZeroDuration();
-        
+
         // Time validations for reasonable values
         if (duration < MIN_REASONABLE_DURATION) revert DurationTooShort();
         if (duration > MAX_REASONABLE_DURATION) revert DurationTooLong();
@@ -190,10 +187,8 @@ contract GrantStreamVault is ReentrancyGuard {
         uint256 intervalsCompleted = elapsed / streamInterval;
         uint256 totalIntervals = uint256(g.duration) / streamInterval;
 
-        // If duration < streamInterval, totalIntervals = 0
-        // In this case, vesting should still work proportionally
         if (totalIntervals == 0) {
-            // Fallback to linear vesting if duration is shorter than interval
+            // fallback to linear vesting if duration is shorter than interval
             return (g.total * elapsed) / uint256(g.duration);
         }
 
@@ -247,23 +242,23 @@ contract GrantStreamVault is ReentrancyGuard {
 
         // Set total to vested amount and lock vesting at current point
         g.total = vested;
-        
+
         // Always set duration to elapsed time so vestedAmount() returns correct total
         if (block.timestamp > g.start) {
             g.duration = uint64(block.timestamp - g.start);
         } else {
             g.duration = 0;
         }
-        
+
         // Clear cliff since vesting is now complete/locked
         g.cliff = 0;
 
-        // Deactivate grant if nothing left to claim (claimed equals or exceeds vested)
-        // This prevents further claims and clears storage
+        // deactivate grant if nothing left to claim (claimed equals or exceeds vested)
+        // this prevents further claims and clears storage
         if (g.claimed >= vested) {
             g.active = false;
         }
-        // If vested > claimed, keep active so recipient can claim remaining vested amount
+        // if vested > claimed, keep active so recipient can claim remaining vested amount
 
         emit GrantRevoked(recipient, vested, unvested);
     }
@@ -279,7 +274,7 @@ contract GrantStreamVault is ReentrancyGuard {
         emit StreamIntervalUpdated(newInterval);
     }
 
-    // @notice Withdraw unallocated tokens from contract
+    // @notice allows withdrawal of unallocated tokens from contract
     function withdraw(uint256 amount) external onlyOwner {
         if (amount == 0) revert ZeroAmount();
         if (amount > contractBalance) revert InsufficientContractBalance();
