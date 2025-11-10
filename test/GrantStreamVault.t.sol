@@ -68,20 +68,14 @@ contract GrantStreamVaultTest is Test {
     function setUp() public {
         token = new MockERC20();
         token.mint(owner, INITIAL_BALANCE * 2); // mint extra to cover excess in expanding test suite
-        
+
         address predictedVault = vm.computeCreateAddress(owner, vm.getNonce(owner));
-        
+
         vm.prank(owner);
         token.approve(predictedVault, type(uint256).max);
-        
+
         vm.prank(owner);
-        vault = new GrantStreamVault(
-            IERC20(address(token)),
-            INITIAL_BALANCE,
-            PROTOCOL_FEE_BPS,
-            feeRecipient,
-            owner
-        );
+        vault = new GrantStreamVault(IERC20(address(token)), INITIAL_BALANCE, PROTOCOL_FEE_BPS, feeRecipient, owner);
 
         // verify balance has funds
         assertEq(vault.contractBalance(), INITIAL_BALANCE);
@@ -113,13 +107,13 @@ contract GrantStreamVaultTest is Test {
         vm.expectRevert(GrantStreamVault.InvalidOwner.selector);
         new GrantStreamVault(IERC20(address(token)), INITIAL_BALANCE, PROTOCOL_FEE_BPS, feeRecipient, address(0));
     }
-    
+
     function test_Constructor_RevertsOnExcessiveFee() public {
         address predictedVault = vm.computeCreateAddress(owner, vm.getNonce(owner));
-        
+
         vm.prank(owner);
         token.approve(predictedVault, type(uint256).max);
-        
+
         vm.prank(owner);
         vm.expectRevert(GrantStreamVault.ProtocolFeeTooHigh.selector);
         new GrantStreamVault(IERC20(address(token)), INITIAL_BALANCE, 501, feeRecipient, owner); // 5.01% > 5% max
@@ -130,7 +124,6 @@ contract GrantStreamVaultTest is Test {
     // =============================================================
 
     function test_CreateGrant_Success() public {
-
         uint64 start = uint64(block.timestamp);
 
         vm.expectEmit(true, true, true, true);
@@ -189,19 +182,19 @@ contract GrantStreamVaultTest is Test {
         vm.expectRevert(GrantStreamVault.InsufficientContractBalance.selector);
         vault.createGrant(recipient1, INITIAL_BALANCE + 1 ether, uint64(block.timestamp), DURATION, 0);
     }
-    
+
     function test_CreateGrant_RevertsOnCliffGreaterThanDuration() public {
         vm.prank(owner);
         vm.expectRevert(GrantStreamVault.InvalidCliff.selector);
         vault.createGrant(recipient1, GRANT_AMOUNT, uint64(block.timestamp), 365 days, 366 days);
     }
-    
+
     function test_CreateGrant_RevertsOnDurationTooShort() public {
         vm.prank(owner);
         vm.expectRevert(GrantStreamVault.DurationTooShort.selector);
         vault.createGrant(recipient1, GRANT_AMOUNT, uint64(block.timestamp), 30 minutes, 0);
     }
-    
+
     function test_CreateGrant_RevertsOnDurationTooLong() public {
         vm.prank(owner);
         vm.expectRevert(GrantStreamVault.DurationTooLong.selector);
@@ -315,7 +308,7 @@ contract GrantStreamVaultTest is Test {
         // advance to 4 intervals, making it past 90 day cliff
         vm.warp(start + STREAM_INTERVAL * 4);
 
-        uint256 expectedVested = (GRANT_AMOUNT * 4) / 12; 
+        uint256 expectedVested = (GRANT_AMOUNT * 4) / 12;
         assertEq(vault.vestedAmount(recipient1), expectedVested);
     }
 
@@ -404,18 +397,18 @@ contract GrantStreamVaultTest is Test {
         vm.expectRevert(GrantStreamVault.NothingToClaim.selector);
         vault.claim();
     }
-    
+
     function test_Claim_RevertsBeforeCliff() public {
         uint64 start = uint64(block.timestamp);
-        
+
         vm.startPrank(owner);
         vault.createGrant(recipient1, GRANT_AMOUNT, start, DURATION, CLIFF);
         vm.stopPrank();
-        
+
         vm.warp(start + 30 days);
-        
+
         assertEq(vault.vestedAmount(recipient1), 0);
-        
+
         // attempt to claim should revert
         vm.prank(recipient1);
         vm.expectRevert(GrantStreamVault.NothingToClaim.selector);
@@ -663,7 +656,7 @@ contract GrantStreamVaultTest is Test {
     function test_ZeroFeeConfiguration() public {
         // Predict vault address and approve
         address predictedZeroFeeVault = vm.computeCreateAddress(owner, vm.getNonce(owner));
-        
+
         vm.prank(owner);
         token.approve(predictedZeroFeeVault, type(uint256).max);
 
@@ -698,23 +691,20 @@ contract GrantStreamVaultTest is Test {
     //                    FUZZ TESTS
     // =============================================================
 
-    function testFuzz_CreateGrant_ValidInputs(
-        uint256 grantAmount,
-        uint64 duration,
-        uint64 cliff
-    ) public {
+    function testFuzz_CreateGrant_ValidInputs(uint256 grantAmount, uint64 duration, uint64 cliff) public {
         // Bound inputs to reasonable ranges
         grantAmount = bound(grantAmount, 1 ether, INITIAL_BALANCE);
         duration = uint64(bound(duration, 1 hours, 10 * 365 days));
         cliff = uint64(bound(cliff, 0, duration));
-        
+
         uint64 start = uint64(block.timestamp);
-        
+
         vm.prank(owner);
         vault.createGrant(recipient1, grantAmount, start, duration, cliff);
-        
-        (uint256 total, uint256 claimed, uint64 gStart, uint64 gDuration, uint64 gCliff, bool active) = vault.grants(recipient1);
-        
+
+        (uint256 total, uint256 claimed, uint64 gStart, uint64 gDuration, uint64 gCliff, bool active) =
+            vault.grants(recipient1);
+
         assertEq(total, grantAmount);
         assertEq(claimed, 0);
         assertEq(gStart, start);
@@ -724,85 +714,76 @@ contract GrantStreamVaultTest is Test {
         assertEq(vault.contractBalance(), INITIAL_BALANCE - grantAmount);
     }
 
-    function testFuzz_VestedAmount_LinearityAfterCliff(
-        uint256 grantAmount,
-        uint64 duration,
-        uint64 timeElapsed
-    ) public {
+    function testFuzz_VestedAmount_LinearityAfterCliff(uint256 grantAmount, uint64 duration, uint64 timeElapsed)
+        public
+    {
         grantAmount = bound(grantAmount, 1 ether, INITIAL_BALANCE);
-        duration = uint64(bound(duration, 30 days, 365 days)); 
+        duration = uint64(bound(duration, 30 days, 365 days));
         timeElapsed = uint64(bound(timeElapsed, 0, duration));
-        
+
         uint64 start = uint64(block.timestamp);
-        
+
         vm.prank(owner);
         vault.createGrant(recipient1, grantAmount, start, duration, 0);
-        
+
         vm.warp(start + timeElapsed);
-        
+
         uint256 vested = vault.vestedAmount(recipient1);
-        
+
         assertLe(vested, grantAmount);
-        
+
         // if time >= duration we should be fully vested
         if (timeElapsed >= duration) {
             assertEq(vested, grantAmount);
         }
     }
 
-    function testFuzz_Claim_FeesCorrect(
-        uint256 grantAmount,
-        uint64 duration
-    ) public {
+    function testFuzz_Claim_FeesCorrect(uint256 grantAmount, uint64 duration) public {
         grantAmount = bound(grantAmount, 10 ether, INITIAL_BALANCE);
         duration = uint64(bound(duration, 30 days, 365 days));
-        
+
         uint64 start = uint64(block.timestamp);
-        
+
         vm.prank(owner);
         vault.createGrant(recipient1, grantAmount, start, duration, 0);
-        
+
         vm.warp(start + duration);
-        
+
         uint256 feeBalanceBefore = token.balanceOf(feeRecipient);
         uint256 recipientBalanceBefore = token.balanceOf(recipient1);
-        
+
         vm.prank(recipient1);
         vault.claim();
-        
+
         uint256 expectedFee = (grantAmount * PROTOCOL_FEE_BPS) / 10_000;
         uint256 expectedNet = grantAmount - expectedFee;
-        
+
         assertEq(token.balanceOf(feeRecipient) - feeBalanceBefore, expectedFee);
         assertEq(token.balanceOf(recipient1) - recipientBalanceBefore, expectedNet);
     }
 
-    function testFuzz_Revoke_CorrectSplit(
-        uint256 grantAmount,
-        uint64 duration,
-        uint64 timeElapsed
-    ) public {
+    function testFuzz_Revoke_CorrectSplit(uint256 grantAmount, uint64 duration, uint64 timeElapsed) public {
         grantAmount = bound(grantAmount, 10 ether, INITIAL_BALANCE);
         duration = uint64(bound(duration, 30 days, 365 days));
         timeElapsed = uint64(bound(timeElapsed, 0, duration));
-        
+
         uint64 start = uint64(block.timestamp);
-        
+
         vm.prank(owner);
         vault.createGrant(recipient1, grantAmount, start, duration, 0);
-        
+
         uint256 balanceBeforeRevoke = vault.contractBalance();
-        
+
         vm.warp(start + timeElapsed);
-        
+
         uint256 expectedVested = vault.vestedAmount(recipient1);
         uint256 expectedUnvested = grantAmount - expectedVested;
-        
+
         vm.prank(owner);
         vault.revokeGrant(recipient1);
-        
+
         assertEq(vault.contractBalance(), balanceBeforeRevoke + expectedUnvested);
-        
+
         // Grant total should now equal vested
         (uint256 total,,,,,) = vault.grants(recipient1); //deconstruct here
         assertEq(total, expectedVested);
@@ -812,22 +793,22 @@ contract GrantStreamVaultTest is Test {
     //                    INVARIANT TESTS
     // =============================================================
     // we are going to cover 1. claimed never exceeds total 2. contract balance accounting 3. sum of unclaimed less than or equal to contract balance
-    
+
     function test_Invariant_ClaimedNeverExceedsTotal() public {
         uint64 start = uint64(block.timestamp);
-        
+
         vm.prank(owner);
         vault.createGrant(recipient1, GRANT_AMOUNT, start, DURATION, 0);
-        
+
         // Check invariant at multiple time points
         for (uint256 i = 0; i <= 10; i++) {
             vm.warp(start + (DURATION * i) / 10);
-            
+
             (uint256 total, uint256 claimed,,,, bool active) = vault.grants(recipient1);
-            
+
             if (active) {
                 assertLe(claimed, total, "Claimed exceeds total");
-                
+
                 uint256 vested = vault.vestedAmount(recipient1);
                 assertLe(vested, total, "Vested exceeds total");
                 assertLe(claimed, vested, "Claimed exceeds vested");
@@ -838,24 +819,24 @@ contract GrantStreamVaultTest is Test {
     function test_Invariant_ContractBalanceAccounting() public {
         uint256 initialTokenBalance = token.balanceOf(address(vault));
         uint256 initialContractBalance = vault.contractBalance();
-        
+
         assertEq(initialTokenBalance, initialContractBalance, "Initial state mismatch");
-        
+
         vm.prank(owner);
         vault.createGrant(recipient1, GRANT_AMOUNT, uint64(block.timestamp), DURATION, 0);
-        
+
         assertEq(token.balanceOf(address(vault)), initialTokenBalance);
         assertEq(vault.contractBalance(), initialContractBalance - GRANT_AMOUNT);
-        
+
         // after claim, both balances reduce
         vm.warp(block.timestamp + DURATION);
-        
+
         uint256 balBeforeClaim = token.balanceOf(address(vault));
         uint256 contractBalBeforeClaim = vault.contractBalance();
-        
+
         vm.prank(recipient1);
         vault.claim();
-        
+
         // token balance reduced by full grant
         assertLt(token.balanceOf(address(vault)), balBeforeClaim);
         // contract balance unchanged (was already allocated)
@@ -865,48 +846,49 @@ contract GrantStreamVaultTest is Test {
     function test_Invariant_SumOfUnclaimedLessThanOrEqualContractBalance() public {
         // CRITICAL INVARIANT: sum(grants.total - grants.claimed) <= contractBalance
         // this ensures we never over-allocate funds
-        
+
         uint64 start = uint64(block.timestamp);
 
         // create array of grants
-        
+
         vm.startPrank(owner);
         vault.createGrant(recipient1, 3000 ether, start, DURATION, 0);
         vault.createGrant(recipient2, 2000 ether, start, DURATION * 2, 0);
         vm.stopPrank();
-        
+
         // check invariant at multiple timestops
         for (uint256 i = 0; i <= 10; i++) {
             vm.warp(start + (DURATION * 2 * i) / 10);
-            
+
             (uint256 g1Total, uint256 g1Claimed,,,, bool g1Active) = vault.grants(recipient1);
             (uint256 g2Total, uint256 g2Claimed,,,, bool g2Active) = vault.grants(recipient2);
-            
+
             uint256 totalUnclaimed = 0;
             if (g1Active) totalUnclaimed += (g1Total - g1Claimed);
             if (g2Active) totalUnclaimed += (g2Total - g2Claimed);
-            
+
             uint256 contractBal = vault.contractBalance();
             uint256 tokenBal = token.balanceOf(address(vault));
-            
+
             // INVARIANT: Unclaimed allocations + contractBalance = tokenBalance
             assertEq(totalUnclaimed + contractBal, tokenBal, "Invariant violated: accounting mismatch");
-            
+
             // try claiming if vested for arguments sake
             if (vault.vestedAmount(recipient1) > g1Claimed) {
                 vm.prank(recipient1);
                 vault.claim();
             }
         }
-        
+
         (uint256 g1Total, uint256 g1Claimed,,,, bool g1Active) = vault.grants(recipient1);
         (uint256 g2Total, uint256 g2Claimed,,,, bool g2Active) = vault.grants(recipient2);
-        
+
         uint256 finalUnclaimed = 0;
         if (g1Active) finalUnclaimed += (g1Total - g1Claimed);
         if (g2Active) finalUnclaimed += (g2Total - g2Claimed);
-        
-        assertEq(finalUnclaimed + vault.contractBalance(), token.balanceOf(address(vault)), 
-                 "Final invariant check failed");
+
+        assertEq(
+            finalUnclaimed + vault.contractBalance(), token.balanceOf(address(vault)), "Final invariant check failed"
+        );
     }
 }

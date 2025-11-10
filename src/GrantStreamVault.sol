@@ -29,8 +29,8 @@ contract GrantStreamVault is ReentrancyGuard {
     uint256 private constant BPS_DENOMINATOR = 10_000;
     uint256 private constant MAX_PROTOCOL_FEE_BPS = 500; // 5%
     uint256 private constant DEFAULT_STREAM_INTERVAL = 30 days;
-    uint256 private constant MIN_REASONABLE_DURATION = 1 hours; 
-    uint256 private constant MAX_REASONABLE_DURATION = 10 * 365 days; 
+    uint256 private constant MIN_REASONABLE_DURATION = 1 hours;
+    uint256 private constant MAX_REASONABLE_DURATION = 10 * 365 days;
 
     event GrantCreated(address indexed recipient, uint256 total, uint64 start, uint64 duration, uint64 cliff);
 
